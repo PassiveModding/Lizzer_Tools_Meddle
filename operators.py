@@ -10,17 +10,12 @@ class ActiveMatFixOperator(bpy.types.Operator):
     def execute(self, context):
         if bpy.context.active_object.active_material is None:
             return {'CANCELLED'}
-        mat = bpy.context.active_object.active_material.name
-        shader = 'empty'
-        for key in shaderType.keys():
-            if key in mat:
-                shader = shaderType.get(key)
-            
-        if shader != 'empty':
-            materialFixer(mat, shader)
-            return {'FINISHED'}
-        else:
+        matName = bpy.context.active_object.active_material.name
+        
+        if matName is None:
             return {'CANCELLED'}
+        
+        return shpkMtrlFixer(matName)
     
 class AutoMatFixOperator(bpy.types.Operator):
     
@@ -31,15 +26,7 @@ class AutoMatFixOperator(bpy.types.Operator):
         for obj in bpy.context.selected_objects:
             if obj.data is not None and hasattr(obj.data, 'materials'):
                 for mat in obj.data.materials:
-                    material = mat.name
-                    shader = 'empty'
-
-                    for key in shaderType.keys():
-                        if key in material:
-                            shader = shaderType.get(key)
-                        
-                    if shader != 'empty':
-                        materialFixer(material, shader)
+                    shpkMtrlFixer(mat.name)
 
         return {'FINISHED'}
 
@@ -90,22 +77,46 @@ nodeProperty = {
     "Limbal Color": "OptionColor"
 }
 
-shaderType = {
-    "bibo_skin": "Dawntrail Skin Shader Skul Version",
-    "_fac_": "Dawntrail Face Shader Skul Version",
-    "_hir_": "Dawntrail Hair Shader Skul Version",
-    "_hair_": "Dawntrail Hair Shader Skul Version",
-    "_iri_": "Dawntrail Eye Shader Skul Version",
-    "_etc_a_": "Dawntrail etc_a Shader Skul Version",
-    "_etc_b_": "Dawntrail etc_b Shader Skul Version",
-    "_etc_c_": "Dawntrail etc_c Skul version"
+# ShaderPackage prop + Material prop -> shaderType
+shaderTypeLookup = {
+    ("hair.shpk", "_etc_a.mtrl"): "Dawntrail etc_a Shader Skul Version",
+    ("charactertattoo.shpk", "_etc_b.mtrl"): "Dawntrail etc_b Shader Skul Version",
+    ("characterocclusion.shpk", "_etc_c.mtrl"): "Dawntrail etc_c Skul version",
+    ("skin.shpk", "_fac.mtrl"): "Dawntrail Face Shader Skul Version",
+    ("skin.shpk", ""): "Dawntrail Skin Shader Skul Version",
+    ("hair.shpk", ""): "Dawntrail Hair Shader Skul Version",
+    ("iris.shpk", ""): "Dawntrail Eye Shader Skul Version"
 }
 
+def shpkMtrlFixer(blenderMaterialName):
+    mat = bpy.data.materials[blenderMaterialName]
+    if mat is None:
+        return {'CANCELLED'}
 
-def materialFixer(mat, group):
+    material = mat.node_tree
+    properties = mat
+
+    if "ShaderPackage" not in properties or "Material" not in properties:
+        print("Material " + blenderMaterialName + " does not have ShaderPackage or Material")
+        return {'CANCELLED'}
     
-    material = bpy.data.materials[mat].node_tree
-    properties = bpy.data.materials[mat]
+    shpkFile = properties["ShaderPackage"]
+    mtrlFile = properties["Material"]
+    
+    if shpkFile is None or mtrlFile is None:
+        return {'CANCELLED'}
+    
+    # lookup shaderType
+    group = None
+    for key in shaderTypeLookup.keys():
+        if shpkFile == key[0] and key[1] in mtrlFile:
+            group = shaderTypeLookup[key]
+            print("Shader found for " + shpkFile + " " + mtrlFile + " " + group)
+            break
+        
+    if group is None:
+        print("Shader not found for " + shpkFile + " " + mtrlFile)
+        return {'CANCELLED'}
 
     #Removes all nodes other than textures to make it simpler to construct a node setup
     for node in material.nodes:
@@ -122,7 +133,6 @@ def materialFixer(mat, group):
     output.location = (500,300)
 
     #Add the appropriate shader node group
-
     groupNode = material.nodes.new('ShaderNodeGroup')
     groupNode.node_tree = bpy.data.node_groups[group]
     groupNode.location = (10, 300)
@@ -173,15 +183,6 @@ def getProperty(propertyName, properties):
     if propertyName.type == "VALUE":
         prop = float(properties[nodeProperty.get(propertyName.name)])
     return(prop)
-
-    
-#mat = bpy.context.active_object.active_material.name
-
-#for key in shaderType.keys():
-    #if key in mat:
-        #shader = shaderType.get(key)
-
-#materialFixer(mat, shader)
 
 classes = [
     ActiveMatFixOperator,
